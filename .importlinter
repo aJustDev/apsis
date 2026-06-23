@@ -1,0 +1,39 @@
+[importlinter]
+root_packages =
+    app
+
+# ---------------------------------------------------------------------------
+# La infraestructura generica de app.core (db, repos, schemas, excepciones,
+# concurrency, jobs y events) NO debe depender del contexto de dominio
+# app.tracking. Las unicas aristas core -> tracking permitidas son los dos
+# puntos de wiring: db_registry (composition root que puebla Base.metadata y
+# el dispatcher) y el job handler tle_refresh (que orquesta la ingesta).
+# ---------------------------------------------------------------------------
+[importlinter:contract:core-agnostico-del-dominio]
+name = app.core no importa app.tracking (salvo wiring)
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    app.core
+forbidden_modules =
+    app.tracking
+ignore_imports =
+    app.core.db_registry -> app.tracking.models
+    app.core.db_registry -> app.tracking.event_handlers.recompute_passes
+    app.core.jobs.handlers.tle_refresh -> app.tracking.repos
+    app.core.jobs.handlers.tle_refresh -> app.tracking.use_cases.ingest_tles
+
+# ---------------------------------------------------------------------------
+# Capas del contexto tracking: una capa solo puede importar las de abajo.
+# api -> use_cases -> repos/services -> schemas -> models.
+# ---------------------------------------------------------------------------
+[importlinter:contract:tracking-por-capas]
+name = tracking respeta el orden de capas
+type = layers
+layers =
+    app.tracking.api
+    app.tracking.use_cases
+    app.tracking.repos
+    app.tracking.services
+    app.tracking.schemas
+    app.tracking.models
