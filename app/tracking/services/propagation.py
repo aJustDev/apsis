@@ -31,6 +31,11 @@ def tle_epoch(*, line1: str, line2: str) -> datetime:
     return epoch
 
 
+def tle_norad_id(*, line1: str) -> int:
+    """Numero de catalogo NORAD leido de la linea 1 del TLE (columnas 3-7)."""
+    return int(line1[2:7])
+
+
 def subpoints(
     *, line1: str, line2: str, instants: Sequence[datetime]
 ) -> list[GeodeticPoint]:
@@ -58,4 +63,4 @@ def subpoints(
     ]
 
 
-__all__ = ["GeodeticPoint", "subpoints", "tle_epoch"]
+__all__ = ["GeodeticPoint", "subpoints", "tle_epoch", "tle_norad_id"]

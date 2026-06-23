@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.tracking.services.propagation import subpoints, tle_epoch
+from app.tracking.services.propagation import subpoints, tle_epoch, tle_norad_id
 
 ISS_LINE1 = "1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9000"
 ISS_LINE2 = "2 25544  51.6400 208.0000 0006703 130.0000 325.0000 15.50000000    07"
@@ -34,3 +34,7 @@ def test_subpoints_rejects_naive_datetimes() -> None:
 def test_subpoints_rejects_empty() -> None:
     with pytest.raises(ValueError, match="must not be empty"):
         subpoints(line1=ISS_LINE1, line2=ISS_LINE2, instants=[])
+
+
+def test_tle_norad_id_parses_catalog_number() -> None:
+    assert tle_norad_id(line1=ISS_LINE1) == 25544
