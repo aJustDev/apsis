@@ -94,6 +94,11 @@ ignore_missing_imports = true
 module = "tests.*"
 disallow_untyped_defs = false
 
+[[tool.mypy.overrides]]
+# FastAPI deriva los tipos de response_model/Depends; anotar cada route es ruido.
+module = ["app.api.*", "app.tracking.api.*"]
+disallow_untyped_defs = false
+
 [tool.coverage.run]
 source = ["app"]
 
