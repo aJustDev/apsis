@@ -58,10 +58,10 @@ class CelestrakHttpClient:
         text = response.text.strip()
         if response.status_code == 403:
             raise RateLimitedError(text)
-        if response.status_code == 404 or text == _NOT_FOUND_BODY:
-            raise TleNotFound(text or "no GP data")
         if response.status_code >= 500:
             raise TransientError(f"CelesTrak {response.status_code}")
+        if response.status_code == 404 or (response.status_code == 200 and text == _NOT_FOUND_BODY):
+            raise TleNotFound(text or "no GP data")
         if response.status_code != 200:
             raise CelestrakError(f"CelesTrak unexpected status {response.status_code}")
         return response.text

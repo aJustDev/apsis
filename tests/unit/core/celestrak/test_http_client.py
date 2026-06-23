@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.core.celestrak.drivers.http import CelestrakHttpClient
-from app.core.celestrak.exceptions import RateLimitedError, TleNotFound
+from app.core.celestrak.exceptions import RateLimitedError, TleNotFound, TransientError
 
 ISS_BODY = (
     "ISS (ZARYA)             \r\n"
@@ -69,4 +69,16 @@ async def test_fetch_group_parses_multiple_records() -> None:
     records = await client.fetch_group(group="active")
     assert len(records) == 2
     assert records[1].name == "NOAA 19"
+    await client.close()
+
+
+async def test_server_error_is_transient_even_with_marker_body() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        # Un 5xx cuyo cuerpo coincide con el marcador not-found debe tratarse
+        # como transitorio (reintentable), no como TleNotFound (permanente).
+        return httpx.Response(503, text="No GP data found")
+
+    client = _client(handler)
+    with pytest.raises(TransientError):
+        await client.fetch_group(group="active")
     await client.close()
