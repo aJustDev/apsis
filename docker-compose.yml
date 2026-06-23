@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    environment:
+      POSTGRES_USER: apsis
+      POSTGRES_PASSWORD: apsis
+      POSTGRES_DB: apsis_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - apsis_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apsis -d apsis_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  apsis_pg:
