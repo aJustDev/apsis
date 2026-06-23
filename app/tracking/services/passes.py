@@ -10,9 +10,10 @@ CPU-bound: el caller lo ejecuta via `run_blocking`.
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 from skyfield.api import wgs84
+from skyfield.timelib import Time
+from skyfield.toposlib import GeographicPosition
 
 from app.tracking.services._skyfield import build_satellite, timescale
 from app.tracking.services.propagation import subpoints
@@ -65,7 +66,7 @@ def compute_passes(
 
     passes: list[SatellitePass] = []
     aos_at: datetime | None = None
-    peak_time: Any = None
+    peak_time: Time | None = None
     for event_time, event in zip(times, events, strict=True):
         code = int(event)
         if code == _RISE:
@@ -97,9 +98,9 @@ def _build_pass(
     *,
     line1: str,
     line2: str,
-    topos: Any,
+    topos: GeographicPosition,
     aos_at: datetime,
-    peak_time: Any,
+    peak_time: Time,
     los_at: datetime,
     track_samples: int,
 ) -> SatellitePass:
@@ -117,8 +118,12 @@ def _build_pass(
 
 
 def _sample_instants(start: datetime, end: datetime, count: int) -> list[datetime]:
-    span = (end - start) / (count - 1)
-    return [start + span * step for step in range(count)]
+    # La fraccion se calcula dentro del producto (menos error de redondeo) y
+    # el ultimo punto se fija a `end` para que el track no se quede corto.
+    span = end - start
+    instants = [start + span * step / (count - 1) for step in range(count)]
+    instants[-1] = end
+    return instants
 
 
 __all__ = ["ObserverSite", "SatellitePass", "compute_passes"]
