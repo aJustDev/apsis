@@ -3,32 +3,40 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from sqlalchemy import text
 
 from app.api.v1 import v1_router
+from app.core import db_registry as _db_registry  # noqa: F401 - registra modelos y handlers
 from app.core.config import settings
 from app.core.db import engine
+from app.core.events.worker import OutboxWorker
 from app.core.exceptions.handlers import register_exception_handlers
+from app.core.jobs.worker import JobWorker
+from app.core.startup import check_database, check_utc_timezone
 
 logger = logging.getLogger(__name__)
 
 
-async def _database_reachable() -> bool:
-    try:
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-    except Exception:
-        logger.warning("database unreachable at startup; readiness will report not-ready")
-        return False
-    return True
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    # Los workers de jobs/outbox se arrancan aqui cuando existan; de momento
-    # solo se publica el estado de la BD para el readiness probe.
-    app.state.ready = await _database_reachable()
+    check_utc_timezone()
+    db_status = await check_database(engine)
+    app.state.ready = db_status == "OK"
+
+    # Los workers se construyen siempre (para poder pararlos en shutdown) pero
+    # solo arrancan si la BD esta disponible.
+    outbox_worker = OutboxWorker()
+    job_worker = JobWorker()
+    if app.state.ready:
+        await outbox_worker.start()
+        await job_worker.start()
+    app.state.outbox_worker = outbox_worker
+    app.state.job_worker = job_worker
+
     yield
+
+    await job_worker.stop()
+    await outbox_worker.stop()
+    app.state.ready = False
     await engine.dispose()
 
 
