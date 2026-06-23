@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     CELESTRAK_GROUP: str = "active"
     CELESTRAK_TIMEOUT_SECONDS: float = 30.0
 
+    # Pass prediction: ventana hacia delante que recalcula el outbox.
+    PASS_PREDICTION_HORIZON_HOURS: int = 48
+
     model_config = SettingsConfigDict(
         env_file=f".env.{os.getenv('ENVIRONMENT', 'local')}",
         env_file_encoding="utf-8",
