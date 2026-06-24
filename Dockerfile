@@ -18,9 +18,10 @@ RUN uv sync --frozen --no-dev --no-install-project
 # --- Runtime ---------------------------------------------------
 FROM python:3.14-slim AS runtime
 
+# TZ=UTC: el dominio (tiempos orbitales) es UTC y app valida el TZ del proceso.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    TZ=Europe/Madrid \
+    TZ=UTC \
     PATH="/build/.venv/bin:$PATH" \
     PYTHONPATH=/app
 
