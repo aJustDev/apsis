@@ -1,0 +1,51 @@
+name: Deploy
+
+# Se dispara cuando el workflow `CI` termina sobre `main`.
+# `conclusion == 'success'` aborta si CI fue rojo: el deploy nunca recibe un
+# commit que rompe lint/tests.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-apsis
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.APSIS_DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H -p "${{ secrets.APSIS_DEPLOY_PORT }}" \
+            "${{ secrets.APSIS_DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Trigger deploy
+        # No se pasa comando: el authorized_keys del user `REDACTED` tiene
+        # command="/usr/local/bin/deploy_apsis" forzado, asi que SSH solo ejecuta
+        # ese script y devuelve su exit code.
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=yes \
+            -p "${{ secrets.APSIS_DEPLOY_PORT }}" \
+            "REDACTED@${{ secrets.APSIS_DEPLOY_HOST }}"
+
+      - name: Smoke test (publico via Caddy)
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS -o /dev/null https://apsis.ajustino.dev/v1/health/liveness; then
+              echo "OK on attempt $i"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "FAIL: liveness no respondio en 30s"
+          exit 1
