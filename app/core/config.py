@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     ENVIRONMENT: str = "local"
 
+    # CORS: origenes permitidos para fetch cross-origin (coma-separados).
+    # Vacio = sin CORS (default local); en deploy = el dominio del front estatico.
+    CORS_ORIGINS: str = ""
+
     # Database. DATABASE_URL is derived from the parts unless set explicitly.
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
@@ -46,6 +50,10 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
     @model_validator(mode="after")
     def build_database_url(self) -> "Settings":

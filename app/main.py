@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import v1_router
 from app.core import db_registry as _db_registry  # noqa: F401 - registra modelos y handlers
@@ -41,5 +42,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION, lifespan=lifespan)
+if settings.cors_origins:
+    # Solo lectura desde el front estatico: GET (el middleware gestiona el preflight).
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_methods=["GET"],
+        allow_headers=["*"],
+    )
 register_exception_handlers(app)
 app.include_router(v1_router)
