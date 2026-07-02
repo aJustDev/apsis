@@ -1,12 +1,22 @@
 # apsis
 
+[![CI](https://github.com/aJustDev/apsis/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/aJustDev/apsis/actions/workflows/ci.yml)
+[![Python 3.14](https://img.shields.io/badge/python-3.14-3776ab)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A satellite pass-prediction backend, built the way I build production services:
 **FastAPI + SQLAlchemy 2 (async) + PostGIS**, with **Postgres-native scheduled
 jobs and a transactional outbox** instead of a message broker.
 
-Give it a ground station and a satellite, it tells you the next visible passes
-and the sub-satellite ground track. Orbital data comes from public
-[CelesTrak](https://celestrak.org) TLEs, refreshed on a schedule.
+Give it a ground station and a satellite, and it returns the next contact
+windows: every pass above the station's elevation mask (10 degrees by default)
+for the next 48 hours, each with its AOS/LOS times, peak elevation, and the
+sub-satellite ground track as GeoJSON. Orbital data comes from public
+[CelesTrak](https://celestrak.org) TLEs, refreshed every two hours.
+
+A public instance runs at [apsis.ajustino.dev/docs](https://apsis.ajustino.dev/docs)
+and feeds the live pass map at [ajustino.dev](https://ajustino.dev). The design
+is written up in the [case study](https://ajustino.dev/case-studies/apsis/).
 
 ## Why it exists
 
@@ -53,6 +63,39 @@ A satellite row _is_ the TLE store. `recompute_passes` is idempotent: it deletes
 and reinserts the predictions for each `(satellite, ground_station)` pair, so a
 retried outbox event converges to the same state.
 
+## Try it against the public instance
+
+```sh
+curl -s https://apsis.ajustino.dev/v1/ground-stations
+# two ESA stations in Spain: Cebreros and Maspalomas
+
+curl -s "https://apsis.ajustino.dev/v1/ground-stations/870a0d92-8a9b-49a3-8361-8d27f7f9fe3e/passes"
+```
+
+Response (abbreviated):
+
+```json
+{
+  "items": [
+    {
+      "satellite_norad_id": 25544,
+      "satellite_name": "ISS (ZARYA)",
+      "aos_at": "2026-07-02T22:24:36.508387Z",
+      "los_at": "2026-07-02T22:30:44.193418Z",
+      "peak_at": "2026-07-02T22:27:39.733062Z",
+      "peak_elevation_deg": 32.86,
+      "track": {
+        "type": "LineString",
+        "coordinates": [[-9.4969, 28.6596], [-8.7278, 29.3906], "..."]
+      }
+    }
+  ],
+  "total": 173
+}
+```
+
+Each track is sampled at 24 points between AOS and LOS, ready to draw on a map.
+
 ## Stack
 
 Python 3.14, FastAPI, SQLAlchemy 2 async, asyncpg, PostGIS (geoalchemy2 +
@@ -62,6 +105,8 @@ real PostGIS via testcontainers.
 
 ## Quickstart
 
+Requires Python 3.14 (uv fetches it if missing) and Docker for the database.
+
 ```sh
 uv sync
 docker compose up -d db          # PostGIS on localhost:5432
@@ -70,9 +115,19 @@ uv run alembic upgrade head      # schema + seeds the tle_refresh job
 uv run uvicorn app.main:app --reload
 ```
 
-The job and outbox workers start with the app (FastAPI lifespan). Once the DB is
-up, the seeded `tle_refresh` job fetches the CelesTrak `active` group and the
-outbox recomputes passes for every registered ground station.
+The job and outbox workers start with the app (FastAPI lifespan). A fresh
+database has no ground stations, and passes are only computed for registered
+stations, so register one right after the app boots:
+
+```sh
+curl -s -X POST localhost:8000/v1/ground-stations \
+  -H 'content-type: application/json' \
+  -d '{"name": "Cebreros", "latitude": 40.4527, "longitude": -4.3676, "altitude_m": 794}'
+```
+
+The seeded `tle_refresh` job runs on the first worker poll, upserts the
+configured CelesTrak group (`active` by default) and the outbox recomputes
+passes for every registered station.
 
 Open `http://localhost:8000/docs` for the API.
 
@@ -85,7 +140,7 @@ Open `http://localhost:8000/docs` for the API.
 | `GET`  | `/v1/satellites`                  | List tracked satellites (paginated)          |
 | `POST` | `/v1/ground-stations`             | Register a ground station (lat/lon/altitude) |
 | `GET`  | `/v1/ground-stations`             | List ground stations                         |
-| `GET`  | `/v1/ground-stations/{id}/passes` | Upcoming passes (GeoJSON ground track)       |
+| `GET`  | `/v1/ground-stations/{id}/passes` | Upcoming contact windows (GeoJSON track)     |
 
 ## Layout
 
@@ -106,6 +161,15 @@ app/
 migrations/    Alembic (async, initial PostGIS migration)
 tests/         unit + integration (testcontainers)
 ```
+
+## Architecture decisions
+
+The load-bearing choices are recorded as ADRs in [`docs/adr/`](docs/adr/):
+
+- [0001: Postgres-native jobs and outbox, no broker](docs/adr/0001-no-broker.md)
+- [0002: Two claim strategies: optimistic UPDATE for jobs, SKIP LOCKED for the outbox](docs/adr/0002-claim-strategies.md)
+- [0003: PostGIS for geospatial state](docs/adr/0003-postgis.md)
+- [0004: Layered architecture, pure services, drivers behind protocols](docs/adr/0004-layering.md)
 
 ## Testing and quality gates
 
