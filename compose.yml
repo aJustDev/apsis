@@ -1,0 +1,101 @@
+# Compose de PRODUCCION para cartagena (el de desarrollo es docker-compose.yml).
+# docker compose prefiere este fichero, y `deploy_apsis` lo pasa explicito con
+# -f compose.yml. Misma convencion que geo-hazard y shade-engine.
+#
+# Vivio sin versionar en /opt/apsis desde el despliegue inicial hasta el
+# 2026-08-13: el `git reset --hard` del deploy no borra ficheros sin trackear,
+# asi que sobrevivia a cada despliegue en silencio y la produccion dependia de
+# un fichero que no existia en ningun repo. Este es ese fichero, tal cual.
+
+name: apsis
+
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    container_name: apsis-db
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=50"
+      - "-c"
+      - "shared_buffers=256MB"
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - apsis_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      apsis-net:
+        aliases: [db]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  migrate:
+    image: apsis:prod
+    container_name: apsis-migrate
+    build:
+      context: .
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["alembic"]
+    command: ["upgrade", "head"]
+    restart: "no"
+    networks:
+      apsis-net:
+        aliases: [migrate]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    image: apsis:prod
+    container_name: apsis-api
+    build:
+      context: .
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+    ports:
+      - "127.0.0.1:8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      apsis-net:
+        aliases: [api]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  apsis_pgdata:
+
+networks:
+  apsis-net:
+    name: apsis-net

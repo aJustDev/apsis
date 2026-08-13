@@ -1,0 +1,13 @@
+[Unit]
+Description=Ejecuta el backup de apsis a diario
+
+[Timer]
+# Escalonado a proposito: ductual y geohazard corren sobre las 00:10, y cuatro
+# pg_dump con subida a R2 a la vez no aportan nada.
+OnCalendar=*-*-* 01:20:00
+# Persistent: si la maquina estaba apagada a la hora, lo lanza al arrancar.
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
